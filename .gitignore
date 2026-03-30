@@ -1,5 +1,5 @@
-# Model checkpoints (large files)
-*.pth
+# Model checkpoints (large files) - managed by Git LFS
+# *.pth
 *.pkl
 *.h5
 *.ckpt
