@@ -1,0 +1,11 @@
+torch>=1.10.0
+torchvision>=0.11.0
+tqdm
+numpy
+opencv-python-headless
+facenet-pytorch
+streamlit
+Pillow
+matplotlib
+bcrypt
+streamlit-authenticator
