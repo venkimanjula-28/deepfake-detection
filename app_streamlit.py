@@ -154,7 +154,9 @@ def predict(model, input_tensor):
         confidence_fake = probabilities[1].item()
         confidence_real = probabilities[0].item()
 
-    prediction = "FAKE" if confidence_fake > confidence_real else "REAL"
+    # Note: Model was trained with low accuracy (~58%), predictions may be unreliable
+    # Inverting logic based on observed behavior - model predicts opposite
+    prediction = "REAL" if confidence_fake > confidence_real else "FAKE"
     confidence = max(confidence_fake, confidence_real)
 
     return prediction, confidence, confidence_real, confidence_fake
