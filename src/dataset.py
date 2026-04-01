@@ -15,6 +15,62 @@ except Exception as e:
     mtcnn = None
 
 
+# -----------------------------------------------------------------------
+# Fast cached dataset  (loads pre-saved .npy files)
+# -----------------------------------------------------------------------
+class CachedDeepFakeDataset(Dataset):
+    """
+    Loads pre-cached .npy files produced by cache_dataset.py.
+    Each .npy file has shape (num_frames, H, W, 3) uint8.
+    Much faster than reading raw images/videos every iteration.
+    """
+    def __init__(self, root_dir, num_frames=6, transform=None):
+        self.num_frames = num_frames
+        self.transform  = transform
+        self.samples    = []   # list of (npy_path, label)
+
+        for label, cls in enumerate(['real', 'fake']):
+            cls_dir = os.path.join(root_dir, cls)
+            if not os.path.exists(cls_dir):
+                continue
+            for fname in sorted(os.listdir(cls_dir)):
+                if fname.lower().endswith('.npy'):
+                    self.samples.append((os.path.join(cls_dir, fname), label))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+        try:
+            arr = np.load(path)  # (T, H, W, 3) or (H, W, 3) uint8
+
+            # Handle single-image .npy (old augmentation files may have shape H,W,3)
+            if arr.ndim == 3:  # (H, W, 3)
+                arr = np.stack([arr] * self.num_frames, axis=0)
+
+            # Pad / truncate to num_frames
+            if len(arr) < self.num_frames:
+                pad = np.stack([arr[-1]] * (self.num_frames - len(arr)))
+                arr = np.concatenate([arr, pad], axis=0)
+            arr = arr[:self.num_frames]
+
+            # Ensure contiguous, then convert: uint8 → float32 [0, 1], shape (T, 3, H, W)
+            arr = np.ascontiguousarray(arr)
+            tensor = torch.from_numpy(arr).permute(0, 3, 1, 2).float() / 255.0
+
+            if self.transform is not None:
+                # Apply transform frame-by-frame
+                frames = [self.transform(tensor[i]) for i in range(tensor.shape[0])]
+                tensor = torch.stack(frames)
+
+            return tensor, torch.tensor(label, dtype=torch.long)
+        except Exception as e:
+            print(f"Error loading {path}: {e}")
+            dummy = torch.zeros(self.num_frames, 3, 112, 112)
+            return dummy, torch.tensor(label, dtype=torch.long)
+
+
 def extract_frames_from_video(video_path, num_frames=12):
     try:
         cap = cv2.VideoCapture(video_path)
