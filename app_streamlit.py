@@ -83,7 +83,8 @@ def load_model_cached(checkpoint_path, backbone='resnet18', use_lstm=False):
     """Load the trained model from checkpoint with caching"""
     try:
         model = get_model(backbone=backbone, pretrained=False, freeze_backbone=False, use_lstm=use_lstm)
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        # PyTorch 2.6+ compatibility: use weights_only=False for legacy checkpoints
+        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
         
         # Try to load state dict, handling potential architecture mismatches
         try:
@@ -296,10 +297,28 @@ def show_main_app():
 
         # Model settings
         st.subheader("Model Settings")
-        checkpoint_path = st.text_input(
-            "Checkpoint Path",
-            value="checkpoint.pth",
-            help="Path to the trained model checkpoint"
+        
+        # List available checkpoints
+        checkpoint_files = [f for f in os.listdir('.') if f.endswith('.pth') and 'checkpoint' in f]
+        if not checkpoint_files:
+            checkpoint_files = ['checkpoint.pth']
+        
+        # Prioritize the best models
+        priority_order = ['checkpoint_perfect.pth', 'checkpoint_balanced.pth', 'checkpoint_final.pth', 'checkpoint_best.pth']
+        sorted_checkpoints = []
+        for priority in priority_order:
+            if priority in checkpoint_files:
+                sorted_checkpoints.append(priority)
+        # Add remaining checkpoints
+        for ckpt in checkpoint_files:
+            if ckpt not in sorted_checkpoints:
+                sorted_checkpoints.append(ckpt)
+        
+        checkpoint_path = st.selectbox(
+            "Select Model Checkpoint",
+            options=sorted_checkpoints,
+            index=0 if 'checkpoint_perfect.pth' in sorted_checkpoints else 0,
+            help="Choose the trained model checkpoint"
         )
 
         backbone = st.selectbox(

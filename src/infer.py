@@ -19,6 +19,25 @@ def preprocess_frames(frames, num_frames=12):
     return frames.unsqueeze(0)
 
 
+def infer_image(model, path, num_frames=12, device='cpu'):
+    model.eval()
+    image = cv2.imread(path)
+    if image is None:
+        raise ValueError(f"Could not read image: {path}")
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    frames = [image] * num_frames
+    tensor = preprocess_frames(frames, num_frames).to(device)
+
+    with torch.no_grad():
+        output = model(tensor)
+        prob = torch.softmax(output, dim=1)[0]
+    print(f"Raw logits: {output}")
+    print(f"Probabilities: {prob}")
+    classes = ['real', 'fake']
+    pred = classes[prob.argmax().item()]
+    return pred, prob.detach().cpu().numpy().tolist()
+
+
 def infer_video(model, path, num_frames=12, device='cpu'):
     model.eval()
     frames = extract_frames_from_video(path, num_frames)
@@ -27,6 +46,8 @@ def infer_video(model, path, num_frames=12, device='cpu'):
     with torch.no_grad():
         output = model(tensor)
         prob = torch.softmax(output, dim=1)[0]
+    print(f"Raw logits: {output}")
+    print(f"Probabilities: {prob}")
     classes = ['real', 'fake']
     pred = classes[prob.argmax().item()]
     return pred, prob.detach().cpu().numpy().tolist()
@@ -34,17 +55,20 @@ def infer_video(model, path, num_frames=12, device='cpu'):
 
 def main():
     parser = argparse.ArgumentParser(description='Inference for DeepFake Temporal Attention')
-    parser.add_argument('--input', type=str, required=True, help='input video file')
+    parser.add_argument('--input', type=str, required=True, help='input video file or image file')
     parser.add_argument('--checkpoint', type=str, required=True)
     parser.add_argument('--backbone', type=str, choices=['resnet18', 'efficientnet_b0'], default='resnet18')
     parser.add_argument('--frames', type=int, default=8)
     parser.add_argument('--use-lstm', action='store_true', default=True)
+    parser.add_argument('--mode', type=str, choices=['video', 'image'], default='video', help='input mode: video or image')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = get_model(backbone=args.backbone, pretrained=False, freeze_backbone=False, use_lstm=args.use_lstm)
     checkpoint = torch.load(args.checkpoint, map_location=device)
+    print("Checkpoint keys:", list(checkpoint.keys()))
+    print("Model state dict keys sample:", list(checkpoint['model_state_dict'].keys())[:10])
     
     # Try to load state dict, handling potential architecture mismatches
     try:
@@ -60,7 +84,10 @@ def main():
     
     model = model.to(device)
 
-    pred, prob = infer_video(model, args.input, num_frames=args.frames, device=device)
+    if args.mode == 'video':
+        pred, prob = infer_video(model, args.input, num_frames=args.frames, device=device)
+    else:
+        pred, prob = infer_image(model, args.input, num_frames=args.frames, device=device)
     print(f'Prediction: {pred} - confidence real={prob[0]:.4f}, fake={prob[1]:.4f}')
 
 
